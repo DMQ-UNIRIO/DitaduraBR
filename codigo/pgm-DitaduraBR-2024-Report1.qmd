@@ -1,0 +1,364 @@
+---
+title: "Relatório 1"
+author: "Vinicius Pinheiro Israel & Steven Dutt-Ross"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## Bibliotecas do R e Arquivos
+
+Os códigos a seguir apresentam a análise do banco de dados produzido por alunos dos cursos de ciência política e ciências sociais da Universidade Federal do Estado do Rio de Janeiro (UNIRIO) a partir das informações contidas no Volume 3 do Relatório Final da Comissão Nacional da Verdade (CNV).
+
+\* Vamos analisar variáveis socioeconômicas, variáveis políticas e variáveis sobre as graves violações dos direitos humanos.
+
+\* No total foram 434 registros, considerando 36 variáveis.
+
+\* Este trabalho, assim como a construção do banco de dados, foi inspirado no trabalho de Freire et al. (2019) construído sobre a ditadura de Pinochet (1973-1990) e que gerou o repositório no R chamado Pinochet.
+
+```{r}
+#| warning: false
+options(scipen = 999)  # Retira notação científica
+library(ggplot2)       # Gráficos bonitos
+library(googleway)     # Pacote para o Google Maps
+library(ggmap)         # Ferramentas para fazer mapas 
+library(sf)            # Pacote para georreferenciamento
+library(maptools)      # Contorno do mapa
+library(mapview)       # Visualização dinâmica de mapas 
+library(readxl)        # Abre arquivos em Excel
+library(kableExtra)    # Tabelas bonitas
+
+# DitaduraBR-2024
+setwd("C:/Users/08691199741/OneDrive - unirio.br/Área de Trabalho/2024 DitaduraBR")
+
+bd <- read_excel("DitaduraBR-2024v3.xlsx")
+head(bd)
+```
+
+# Evolução no tempo
+
+A Figura @fig-evol-temp apresenta a evolução no tempo das graves violações dos direitos humanos. Observa-se que há um pico de casos de violações no ano de 1964, um período de redução logo em seguida e o pico entre 1968 e 1979. Esse período vai do ano de instalação do Ato Institucional 5 (AI-5) até a promulgação da Lei de Anístia.
+
+```{r}
+#| warning: false
+#| label: fig-evol-temp
+#| fig-cap: Evolução temporal das graves violações dos direitos humanos
+bd$data.in = as.Date(bd$start_date_daily, format="%Y-%m-%d")
+# Extract the month
+bd$ano <- as.numeric(format(bd$data.in, "%Y"))
+range = seq(min(na.omit(bd$ano)),max(na.omit(bd$ano)), by=1)
+tb = table(bd$ano)
+tb = data.frame(tb)
+names(tb) = c('Ano', 'Frequência')
+
+tb = merge(data.frame(Ano=range),tb,
+      by.x='Ano',by.y='Ano', all=T)
+tb$Frequência[is.na(tb$Frequência)]=0
+
+g = ggplot(tb, aes(x=Ano, y=Frequência))+
+  geom_bar(stat='identity',fill='lightblue')+theme_minimal()
+g
+```
+
+# Variáveis socioeconômicas e políticas
+
+A @fig-menor apresenta a distribuição das vítimas menores de 18 anos e a Figura @fig-idade apresenta a distribuição das idades das vítimas.
+
+```{r}
+#| warning: false
+#| label: fig-menor
+#| fig-cap: A vítima era menor de idade?
+diff = data.frame(table(bd$minor))
+names(diff) = c('Menor','Frequência')
+g = ggplot(diff, aes(x="", y=Frequência, fill=Menor)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void()
+g
+```
+
+```{r}
+#| warning: false
+#| label: fig-idade
+#| fig-cap: Idade da vítima
+bd$age = as.integer(bd$age)
+range = seq(min(na.omit(bd$age)),max(na.omit(bd$age)), by=1)
+tb = table(bd$age)
+tb = data.frame(tb)
+names(tb) = c('Idade', 'Frequência')
+tb = merge(data.frame(Idade=range),tb,
+           by.x='Idade',by.y='Idade', all=T)
+tb$Frequência[is.na(tb$Frequência)]=0
+g = ggplot(tb, aes(x=Idade, y=Frequência))+
+  geom_bar(stat='identity',fill='lightblue')+theme_minimal()
+g
+```
+
+A @fig-male apresenta a distribuição das vítimas de acordo com o sexo.
+
+```{r}
+#| label: fig-male
+#| fig-cap: A vítima era do sexo masculino?
+tb = table(bd$male)
+diff = data.frame(tb)
+names(diff) = c('Masculino','Frequência')
+g = ggplot(diff, aes(x="", y=Frequência, fill=Masculino)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void()
+g
+```
+
+```{r}
+tb = sort(table(bd$male))
+kable(tb, col.names = c('Masculino','Frequência'))
+
+kable(prop.table(tb), col.names = c('Masculino','Proporção'))
+
+```
+
+A Figura @fig-occupation mostra as principais ocupações das vítimas e o detalhamento dessas ocupações e a Figura @ig-occupation_detail exibe o detalhamento das ocupações.
+
+```{r}
+#| label: fig-occupation
+#| fig-cap: Ocupação da vítma
+# Occupation (Ocupação) ---
+tb = table(bd$occupation)
+tb = sort(tb, deacresing=F)
+bd$occupation = factor(bd$occupation, levels=names(tb))
+g = ggplot(bd[!is.na(bd$occupation),], aes(y=occupation))+
+  geom_bar(stat='count', fill='lightblue')
+g
+```
+
+```{r}
+tb = sort(table(bd$occupation))
+kable(tb, col.names = c('Ocupação','Frequência'))
+
+kable(prop.table(tb), col.names = c('Ocupação','Proporção'))
+```
+
+```{r}
+#| label: fig-occupation_detail
+#| fig-cap: Ocupação detalhada da vítma
+tb = table(bd$occupation_detail)
+tb = sort(tb, decreasing = F)
+bd$occupation_detail = factor(bd$occupation_detail, levels=names(tb))
+g = ggplot(bd[!is.na(bd$occupation_detail),], aes(y=occupation_detail))+
+  geom_bar(stat='count', fill='lightblue')
+g
+```
+
+As Figuras @fig-affiliation e @fig-affiliation_detail mostram as filiações políticas das vítimas: geral e detalhada, respectivamente.
+
+```{r}
+#| label: fig-affiliation
+#| fig-cap: Afiliação da vítima
+tb = table(bd$victim_affliation)
+diff = data.frame(tb)
+names(diff) = c('Afiliação','Frequência')
+g = ggplot(diff, aes(x="", y=Frequência, fill=Afiliação)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void()
+g
+```
+
+```{r}
+tb = table(bd$victim_affliation)
+kable(tb, col.names = c('Filiação','Frequência'))
+
+kable(prop.table(tb), col.names = c('Filiação','Proporção'))
+```
+
+```{r}
+#| label: fig-affiliation_detail
+#| fig-cap: Afiliação detalhada da vítma
+tb = table(bd$victim_affliation_detail)
+bd$detalhes = bd$victim_affliation_detail
+tb = table(bd$detalhes)
+tb = sort(tb, decreasing = T)
+bd$detalhes[bd$detalhes %in% names(tb)[tb<4]] = 'Outros'
+tb = table(bd$detalhes)
+tb = sort(tb, decreasing = F)
+diff = data.frame(tb)
+names(diff) = c('Afiliação','Frequência')
+
+g = ggplot(diff, aes(y=Afiliação, x=Frequência)) +
+  geom_bar(stat="identity", fill="lightblue")+
+  labs(y='Filiação', x = 'Frequência') + theme_minimal()
+g
+```
+
+```{r}
+tb = table(bd$victim_affliation_detail)
+tb = sort(tb)
+kable(tb, col.names = c('Filiação','Frequência'))
+
+kable(prop.table(tb), col.names = c('Filiação','Proporção'))
+```
+
+# Mapas
+
+Os Mapas a seguir apresentam os locais de graves violações dos direitos humanos. Neles encontram-se os locais registrados das graves violações dos direitos humanos, com e sem visualização ampliada. Os pontos não estão exatamente sobre os locais para que não houvesse sobreposição dos dados em locais de muitas ocorrências (por exemplo os DOI-CODIs e a Casa da Morte em Petrópolis. Para isso, foi adicionado uma função de aletorização dos pontos.
+
+```{r}
+# Localização 1 (início das violações dos direitos humanos)
+
+bdl = bd[!is.na(bd$latitude_1),]
+locais <- st_as_sf(bdl, coords = c("longitude_1", "latitude_1"), crs = 4326)
+ma = mapview(locais, label=bd$last_name)
+
+# Localização 2 (violações dos direitos humanos)
+bdl = bd[!is.na(bd$latitude_2),]
+locais <- st_as_sf(bdl, coords = c("longitude_2", "latitude_2"), crs = 4326)
+mb = mapview(locais, col.regions='red', label=bd$violence, zoom=10)
+mb
+```
+
+```{r}
+library(sp)
+library(leaflet)
+cntr_crds <- c(mean(na.omit(bd$longitude_2)),
+               mean(na.omit(bd$latitude_1)))
+
+mb@map %>% setView(cntr_crds[1], cntr_crds[2], zoom = 4)
+```
+
+# Recomendações
+
+Este trabalho ampliou o número de variáveis consideradas em Freire et al. (2019) ao incluir uma variável com os textos das recomendações extraídos do Volume 3 do Relatório Final da CNV. Observe que os termos: mortais, óbito, paradero e informações são recorrentes, indicando a recomendação de obtenção de melhores informações sobre as condições das mortes. Outros termos recorrentes são investigação, punir e responsáveis, levando na direção que as apurações devem levar a responsabilização e a punição dos responsáveis pelas graves violações dos direitos humanos.
+
+O código a seguir faz a organização dos termos para análise textual.
+
+```{r}
+#| warning: false
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(stringr)
+library(dplyr)
+library(tidytext)
+library(tidyr)
+library(stopwords)
+
+bd$periodo = ifelse(bd$start_date_daily> median(bd$start_date_daily,na.rm = T),"Final", ifelse(bd$start_date_daily< median(bd$start_date_daily,na.rm = T),"Início",NA))
+table(bd$periodo)
+
+selecao = c("individual_id","page",'periodo',"recomendation")
+bd_reduzido = bd[,selecao]
+bd_reduzido = bd_reduzido %>% rename(text=recomendation)
+remove(selecao)
+
+# Removendo caracteres especiais
+bd_reduzido$text = chartr(
+"áéóūáéíóúÁÉÍÓÚýÝàèìòùÀÈÌÒÙâêîôûÂÊÎÔÛãõÃÕñÑäëïöüÄËÏÖÜÿçÇ",
+"aeouaeiouAEIOUyYaeiouAEIOUaeiouAEIOUaoAOnNaeiouAEIOUycC",
+bd_reduzido$text)
+
+# Colocando tudo em minusculo
+bd_reduzido$text = tolower(bd_reduzido$text)
+head(bd_reduzido$text)
+
+# Removendo STOPWORDS
+ditadura_tidy = bd_reduzido %>%
+unnest_tokens(word, text)
+ditadura_tidy %>%
+tibble() %>%
+count(word, sort = TRUE)
+
+palavras_banidas = stopwords("pt")
+palavras_banidas = tibble(palavras_banidas)
+palavras_banidas = palavras_banidas %>% rename(word=palavras_banidas)
+
+ditadura_tidy %>%
+anti_join(palavras_banidas) %>%
+tibble() %>%
+count(word, sort = TRUE)
+
+# Removendo palavras extras
+palavras_extra = tibble(word = c('sobre','diante','assim','lund','ate'))
+palavras_banidas = palavras_banidas %>% add_row(palavras_extra)
+TF = ditadura_tidy %>%
+anti_join(palavras_banidas) %>%
+tibble() %>%
+count(word, sort = TRUE) %>%
+print(n=50)
+
+```
+
+A Figura @fig_termos1 apresenta os termos que mais aparecem nas recomendações.
+
+```{r}
+#| label: fig_termos1
+#| fig-cap: Termos mais recorrentes.
+ditadura_tidy %>%
+anti_join(palavras_banidas) %>%
+tibble() %>%
+count(word, sort = TRUE) %>%
+filter(n > 250) %>%
+mutate(word = reorder(word, n)) %>%
+ggplot(aes(n, word)) +
+geom_col(fill='lightblue') +
+labs(y = 'Termos', x='Frequência') + theme_minimal()
+
+```
+
+Os comandos a seguir exibem os bigramas e trigramas, que são os termos que mais aparecem juntos, dois a dois e três a três.
+
+```{r}
+# Bigramas
+bigrama_ditadura <- bd_reduzido %>%
+unnest_tokens(bigram, text, token = "ngrams", n = 2)
+bigramas <- bigrama_ditadura %>% tibble() %>%
+separate(bigram, c("word1", "word2"), sep = " ")
+bigramas <- bigramas %>%
+filter(!word1 %in% palavras_banidas$word) %>%
+filter(!word2 %in% palavras_banidas$word)
+contagem_bigramas <- bigramas %>%
+count(word1, word2, sort = TRUE)
+contagem_bigramas
+
+# Trigamas
+trigrama_ditadura <- bd_reduzido %>% tibble() %>%
+unnest_tokens(trigram, text, token = "ngrams", n = 3)
+trigrama_ditadura %>% count(trigram, sort = TRUE)
+
+```
+
+A Figura @fig-rede apresenta a rede de termos que mais aparecem concomitantemente.
+
+```{r}
+#| label: fig_rede
+#| fig-cap: Termos que mais ocorreram concomitantemente.
+library(igraph)
+library(ggraph)
+
+rede_bigrama <- contagem_bigramas %>%
+filter(n > 10) %>%
+graph_from_data_frame()
+ggraph(rede_bigrama, layout = 'kk') +
+geom_edge_link() +
+geom_node_point(color = "#8da7b0", size4= 2) +
+geom_node_text(aes(label = name), size=3, vjust = 1, hjust = 0.2, check_overlap = T)
+
+
+
+```
+
+A Figura @fig_termos2 apresenta a nuvem de palavas, dos termos mais recorrentes nas recomendações.
+
+```{r}
+#| label: fig_termos2
+#| fig-cap: Nuvem de palavras.
+auxCorpus = VCorpus(VectorSource(bd$recomendation))
+auxCorpus <- tm_map(auxCorpus, PlainTextDocument)
+auxCorpus <- tm_map(auxCorpus, removePunctuation)
+auxCorpus <- tm_map(auxCorpus, removeNumbers)
+auxCorpus <- tm_map(auxCorpus, removeWords, stopwords("portuguese"))
+auxCorpus <- tm_map(auxCorpus, content_transformer(tolower))
+auxCorpus <- tm_map(auxCorpus, stripWhitespace)
+
+wordcloud(auxCorpus,max.words=100,colors=c("blue","red"))
+```
